@@ -83,11 +83,11 @@ int main(int argc, char* argv[]) {
     reference(input, mask, ref_out, input_width, mask_width);
 
     #ifdef FPGA_EMULATOR
-        cl::sycl::INTEL::fpga_emulator_selector selector;
+        sycl::queue q(sycl::intel::fpga_emulator_selector{});
     #else
-        cl::sycl::default_selector selector;
+        sycl::queue q(sycl::default_selector{});
     #endif
-        cl::sycl::queue q(selector);
+
     printf("Device: %s\n", q.get_device().get_info<cl::sycl::info::device::name>().c_str());
     printf("Input size: %d, Mask width: %d, Repeat: %d\n", input_width, mask_width, repeat);
 
