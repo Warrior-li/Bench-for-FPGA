@@ -82,7 +82,12 @@ int main(int argc, char* argv[]) {
     // CPU 参考结果
     reference(input, mask, ref_out, input_width, mask_width);
 
-    cl::sycl::queue q;
+    #ifdef FPGA_EMULATOR
+        cl::sycl::INTEL::fpga_emulator_selector selector;
+    #else
+        cl::sycl::default_selector selector;
+    #endif
+        cl::sycl::queue q(selector);
     printf("Device: %s\n", q.get_device().get_info<cl::sycl::info::device::name>().c_str());
     printf("Input size: %d, Mask width: %d, Repeat: %d\n", input_width, mask_width, repeat);
 
