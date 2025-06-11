@@ -4,25 +4,23 @@
 #include <chrono>
 #include <cmath>
 
-using namespace sycl;
-
 constexpr int BLOCK_SIZE = 256;
 constexpr int MAX_MASK_WIDTH = 10;
 
 // ----------- kernel 1: basic -------------
-void conv1d(queue &q, const std::vector<float> &in, const std::vector<float> &mask,
+void conv1d(cl::sycl::queue &q, const std::vector<float> &in, const std::vector<float> &mask,
             std::vector<float> &out, int input_width, int mask_width) {
 
-  buffer<float, 1> in_buf(in.data(), range<1>(input_width));
-  buffer<float, 1> out_buf(out.data(), range<1>(input_width));
-  buffer<float, 1> mask_buf(mask.data(), range<1>(mask_width));
+  cl::sycl::buffer<float, 1> in_buf(in.data(), cl::sycl::range<1>(input_width));
+  cl::sycl::buffer<float, 1> out_buf(out.data(), cl::sycl::range<1>(input_width));
+  cl::sycl::buffer<float, 1> mask_buf(mask.data(), cl::sycl::range<1>(mask_width));
 
-  q.submit([&](handler &h) {
-    auto in_acc = in_buf.get_access<access::mode::read>(h);
-    auto out_acc = out_buf.get_access<access::mode::write>(h);
-    auto mask_acc = mask_buf.get_access<access::mode::read>(h);
+  q.submit([&](cl::sycl::handler &h) {
+    auto in_acc = in_buf.get_access<cl::sycl::access::mode::read>(h);
+    auto out_acc = out_buf.get_access<cl::sycl::access::mode::write>(h);
+    auto mask_acc = mask_buf.get_access<cl::sycl::access::mode::read>(h);
 
-    h.parallel_for<class basic_conv>(range<1>(input_width), [=](id<1> i) {
+    h.parallel_for<class basic_conv>(cl::sycl::range<1>(input_width), [=](cl::sycl::id<1> i) {
       float sum = 0.0f;
       int start = i[0] - mask_width / 2;
       for (int j = 0; j < mask_width; j++) {
@@ -36,25 +34,27 @@ void conv1d(queue &q, const std::vector<float> &in, const std::vector<float> &ma
 }
 
 // ----------- kernel 2: tiled -------------
-void conv1d_tiled(queue &q, const std::vector<float> &in, const std::vector<float> &mask,
+void conv1d_tiled(cl::sycl::queue &q, const std::vector<float> &in, const std::vector<float> &mask,
                   std::vector<float> &out, int input_width, int mask_width) {
 
-  buffer<float, 1> in_buf(in.data(), range<1>(input_width));
-  buffer<float, 1> out_buf(out.data(), range<1>(input_width));
-  buffer<float, 1> mask_buf(mask.data(), range<1>(mask_width));
+  cl::sycl::buffer<float, 1> in_buf(in.data(), cl::sycl::range<1>(input_width));
+  cl::sycl::buffer<float, 1> out_buf(out.data(), cl::sycl::range<1>(input_width));
+  cl::sycl::buffer<float, 1> mask_buf(mask.data(), cl::sycl::range<1>(mask_width));
 
   int halo = mask_width / 2;
   int tile_size = BLOCK_SIZE + 2 * halo;
 
-  q.submit([&](handler &h) {
-    auto in_acc = in_buf.get_access<access::mode::read>(h);
-    auto out_acc = out_buf.get_access<access::mode::write>(h);
-    auto mask_acc = mask_buf.get_access<access::mode::read>(h);
+  q.submit([&](cl::sycl::handler &h) {
+    auto in_acc = in_buf.get_access<cl::sycl::access::mode::read>(h);
+    auto out_acc = out_buf.get_access<cl::sycl::access::mode::write>(h);
+    auto mask_acc = mask_buf.get_access<cl::sycl::access::mode::read>(h);
 
-    accessor<float, 1, access::mode::read_write, access::target::local> tile_acc(range<1>(tile_size), h);
+    cl::sycl::accessor<float, 1, cl::sycl::access::mode::read_write,
+        cl::sycl::access::target::local>
+      tile_acc(cl::sycl::range<1>(tile_size), h);
 
     h.parallel_for<class tiled_conv>(
-      nd_range<1>(range<1>(input_width), range<1>(BLOCK_SIZE)), [=](nd_item<1> item) {
+      cl::sycl::nd_range<1>(cl::sycl::range<1>(input_width), cl::sycl::range<1>(BLOCK_SIZE)), [=](cl::sycl::nd_item<1> item) {
         int gid = item.get_global_id(0);
         int lid = item.get_local_id(0);
         int group = item.get_group(0);
@@ -66,7 +66,7 @@ void conv1d_tiled(queue &q, const std::vector<float> &in, const std::vector<floa
           int idx = start + i;
           tile_acc[i] = (idx >= 0 && idx < input_width) ? in_acc[idx] : 0.0f;
         }
-        item.barrier(access::fence_space::local_space);
+        item.barrier(cl::sycl::access::fence_space::local_space);
 
         if (gid < input_width) {
           float sum = 0.0f;
@@ -80,31 +80,33 @@ void conv1d_tiled(queue &q, const std::vector<float> &in, const std::vector<floa
 }
 
 // ----------- kernel 3: tiled + cache-aware -------------
-void conv1d_tiled_caching(queue &q, const std::vector<float> &in, const std::vector<float> &mask,
+void conv1d_tiled_caching(cl::sycl::queue &q, const std::vector<float> &in, const std::vector<float> &mask,
                           std::vector<float> &out, int input_width, int mask_width) {
 
-  buffer<float, 1> in_buf(in.data(), range<1>(input_width));
-  buffer<float, 1> out_buf(out.data(), range<1>(input_width));
-  buffer<float, 1> mask_buf(mask.data(), range<1>(mask_width));
+  cl::sycl::buffer<float, 1> in_buf(in.data(), cl::sycl::range<1>(input_width));
+  cl::sycl::buffer<float, 1> out_buf(out.data(), cl::sycl::range<1>(input_width));
+  cl::sycl::buffer<float, 1> mask_buf(mask.data(), cl::sycl::range<1>(mask_width));
 
   int halo = mask_width / 2;
 
-  q.submit([&](handler &h) {
-    auto in_acc = in_buf.get_access<access::mode::read>(h);
-    auto out_acc = out_buf.get_access<access::mode::write>(h);
-    auto mask_acc = mask_buf.get_access<access::mode::read>(h);
+  q.submit([&](cl::sycl::handler &h) {
+    auto in_acc = in_buf.get_access<cl::sycl::access::mode::read>(h);
+    auto out_acc = out_buf.get_access<cl::sycl::access::mode::write>(h);
+    auto mask_acc = mask_buf.get_access<cl::sycl::access::mode::read>(h);
 
-    accessor<float, 1, access::mode::read_write, access::target::local> tile_acc(range<1>(BLOCK_SIZE), h);
+    cl::sycl::accessor<float, 1, cl::sycl::access::mode::read_write,
+        cl::sycl::access::target::local>
+      tile_acc(cl::sycl::range<1>(BLOCK_SIZE), h);
 
     h.parallel_for<class cache_conv>(
-      nd_range<1>(range<1>(input_width), range<1>(BLOCK_SIZE)), [=](nd_item<1> item) {
+      cl::sycl::nd_range<1>(cl::sycl::range<1>(input_width), cl::sycl::range<1>(BLOCK_SIZE)), [=](cl::sycl::nd_item<1> item) {
         int gid = item.get_global_id(0);
         int lid = item.get_local_id(0);
         int group = item.get_group(0);
         int local_size = item.get_local_range(0);
 
         tile_acc[lid] = in_acc[gid];
-        item.barrier(access::fence_space::local_space);
+        item.barrier(cl::sycl::access::fence_space::local_space);
 
         int start = gid - halo;
         float sum = 0.0f;
@@ -149,7 +151,7 @@ bool check(const std::vector<float>& ref, const std::vector<float>& res, float t
 }
 
 // ----------- Run + Benchmark -------------
-void test_conv1d(queue& q, int input_width, int mask_width, int repeat) {
+void test_conv1d(cl::sycl::queue& q, int input_width, int mask_width, int repeat) {
   std::vector<float> input(input_width), output(input_width), ref_output(input_width), mask(mask_width);
 
   for (int i = 0; i < mask_width; i++) mask[i] = 1.0f;
@@ -199,17 +201,9 @@ int main(int argc, char* argv[]) {
   if (argc > 3) repeat = std::atoi(argv[3]);
   input_width = (input_width + BLOCK_SIZE - 1) / BLOCK_SIZE * BLOCK_SIZE;
 
-  // 选择设备
-#ifdef FPGA_EMULATOR
-  ext::intel::fpga_emulator_selector selector;
-#elif defined(FPGA)
-  ext::intel::fpga_selector selector;
-#else
-  default_selector selector;
-#endif
-  queue q(selector);
+  cl::sycl::queue q; // 由环境变量选择设备
 
-  std::cout << "Device: " << q.get_device().get_info<info::device::name>() << std::endl;
+  std::cout << "Device: " << q.get_device().get_info<cl::sycl::info::device::name>() << std::endl;
   std::cout << "Input size: " << input_width << ", Mask width: " << mask_width << ", Repeat: " << repeat << std::endl;
 
   test_conv1d(q, input_width, mask_width, repeat);
