@@ -83,9 +83,9 @@ int main(int argc, char* argv[]) {
     reference(input, mask, ref_out, input_width, mask_width);
 
     #ifdef FPGA_EMULATOR
-        sycl::queue q(sycl::intel::fpga_emulator_selector{});
+        cl::sycl::queue q(cl::sycl::INTEL::fpga_emulator_selector{});
     #else
-        sycl::queue q(sycl::default_selector{});
+        cl::sycl::queue q(cl::sycl::default_selector{});
     #endif
 
     printf("Device: %s\n", q.get_device().get_info<cl::sycl::info::device::name>().c_str());
